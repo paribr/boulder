@@ -32,8 +32,9 @@ type certificateStorage interface {
 }
 
 var (
-	b64derOrphan = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/]+)\]`)
-	regOrphan    = regexp.MustCompile(`regID=\[(\d+)\]`)
+	b64derOrphan     = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/=]+)\]`)
+	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
+	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
 
 func checkDER(sai certificateStorage, der []byte) error {
@@ -43,7 +44,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 	}
 	_, err = sai.GetCertificate(core.SerialToString(cert.SerialNumber))
 	if err == nil {
-		return fmt.Errorf("Existing certificate found with serial %s", core.SerialToString(cert.SerialNumber))
+		return errAlreadyExists
 	}
 	if _, ok := err.(core.NotFoundError); ok {
 		return nil
@@ -51,13 +52,13 @@ func checkDER(sai certificateStorage, der []byte) error {
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) (found bool, added bool) {
-	if !strings.Contains(line, "b64der=") {
+func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
+	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
 	derStr := b64derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.Err(fmt.Sprintf("b64der variable is empty, [%s]", line))
+		logger.Err(fmt.Sprintf("Didn't match regex for b64der: %s", line))
 		return true, false
 	}
 	der, err := base64.StdEncoding.DecodeString(derStr[1])
@@ -67,7 +68,11 @@ func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) 
 	}
 	err = checkDER(sa, der)
 	if err != nil {
-		logger.Err(fmt.Sprintf("%s, [%s]", err, line))
+		logFunc := logger.Err
+		if err == errAlreadyExists {
+			logFunc = logger.Info
+		}
+		logFunc(fmt.Sprintf("%s, [%s]", err, line))
 		return true, false
 	}
 	// extract the regID
@@ -89,7 +94,7 @@ func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) 
 	return true, true
 }
 
-func setup(c *cli.Context) (statsd.Statter, blog.SyslogWriter, *rpc.StorageAuthorityClient) {
+func setup(c *cli.Context) (statsd.Statter, blog.Logger, *rpc.StorageAuthorityClient) {
 	configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
