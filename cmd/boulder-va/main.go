@@ -6,6 +6,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -70,6 +71,7 @@ func main() {
 		vai.IssuerDomain = c.VA.IssuerDomain
 
 		amqpConf := c.VA.AMQP
+		// TODO remove
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create RA client")
 
@@ -83,8 +85,8 @@ func main() {
 		if c.VA.GRPC.Address != "" {
 			s, l, err := bgrpc.NewServer(&c.VA.GRPC)
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
-			gvas := vapb.Service(vai)
-			vapb.RegisterService(s, gvas)
+			err = rpc.RegisterValidationAuthorityGRPCServer(s, vai)
+			cmd.FailOnError(err, "Unable to register VA gRPC server")
 			go func() {
 				err := s.Serve(l)
 				cmd.FailOnError(err, "VA gRPC service failed")
