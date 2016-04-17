@@ -19,8 +19,12 @@
 -- and the CA and RA (for reads). So right now we have the one user that has
 -- both read and write permission, even though it would be better to give only
 -- read permission to CA and RA.
+DROP USER IF EXISTS 'policy'@'localhost';
+CREATE USER 'policy'@'localhost';
 GRANT SELECT,INSERT,DELETE ON blacklist TO 'policy'@'localhost';
 GRANT SELECT,INSERT,DELETE ON whitelist TO 'policy'@'localhost';
 
 -- Test setup and teardown
+DROP USER IF EXISTS 'test_setup'@'localhost';
+CREATE USER 'test_setup'@'localhost';
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
